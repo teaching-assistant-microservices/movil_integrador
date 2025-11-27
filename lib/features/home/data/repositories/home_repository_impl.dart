@@ -1,3 +1,4 @@
+import 'package:integrador/core/mocks/mock_service.dart';
 import 'package:integrador/core/network/models/upload_file.dart';
 import 'package:integrador/core/network/services/upload_service.dart';
 import 'package:integrador/features/home/domain/entities/upload_result_entity.dart';
@@ -5,8 +6,11 @@ import 'package:integrador/features/home/domain/repositories/home_repository.dar
 import 'package:dio/dio.dart';
 
 class HomeRepositoryImpl implements HomeRepository {
-  final UploadService _uploadService;
-  HomeRepositoryImpl(this._uploadService);
+  final UploadService? _uploadService;
+  final bool useMockData;
+
+  HomeRepositoryImpl(UploadService? uploadService, {this.useMockData = true})
+    : _uploadService = useMockData ? null : uploadService;
 
   @override
   Future<UploadResultEntity> uploadDocument({
@@ -14,8 +18,25 @@ class HomeRepositoryImpl implements HomeRepository {
     required String userId,
     Function(int, int)? onProgress,
   }) async {
+    if (useMockData) {
+      // Simular progreso
+      for (int i = 0; i <= 100; i += 10) {
+        await Future.delayed(Duration(milliseconds: 100));
+        onProgress?.call(i, 100);
+      }
+
+      return await MockService.simulateApiCall(
+        dataGenerator: () => UploadResultEntity(
+          success: true,
+          message: 'Documento subido exitosamente (simulado)',
+          documentId: 'doc_mock_${DateTime.now().millisecondsSinceEpoch}',
+          filename: file.name,
+        ),
+      );
+    }
+
     try {
-      final Response response = await _uploadService.uploadDocument(
+      final Response response = await _uploadService!.uploadDocument(
         file: file,
         userId: userId,
         onSendProgress: onProgress,

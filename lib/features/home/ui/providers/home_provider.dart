@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:integrador/core/network/models/upload_file.dart';

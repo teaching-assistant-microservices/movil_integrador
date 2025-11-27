@@ -9,7 +9,7 @@ class AssistantProvider extends ChangeNotifier {
   final AssistantRepository _repository = AssistantRepositoryImpl();
   
   // Estado
-  List<ChatMessage> _messages = [];
+  final List<ChatMessage> _messages = [];
   bool _isTyping = false;
   String? _currentConversationId;
   StreamSubscription? _streamSubscription;
