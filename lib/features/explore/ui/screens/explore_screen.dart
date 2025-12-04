@@ -1,7 +1,10 @@
 // lib/features/explore/ui/screens/explore_screen.dart
+// VERSIÓN CORREGIDA - Implementa validación y sanitización de búsqueda
+
 import 'package:flutter/material.dart';
 import 'package:integrador/common/widgets/widgets.dart';
 import 'package:integrador/core/mocks/documents_mock_data.dart';
+import 'package:integrador/core/utils/validators.dart'; // ⬅️ NUEVO IMPORT
 import 'package:integrador/themes/app_theme.dart';
 
 class ExploreScreen extends StatefulWidget {
@@ -21,27 +24,104 @@ class _ExploreScreenState extends State<ExploreScreen> {
     'Ciencias',
   ];
 
+  // 🔒 CORRECCIÓN 1: Agregar controller y estado de búsqueda
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // 🔒 CORRECCIÓN 2: Sanitizar y validar búsqueda
+  void _onSearchChanged() {
+    setState(() {
+      // Sanitizar la búsqueda
+      _searchQuery = InputValidators.sanitizeSearchQuery(
+        _searchController.text,
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final allDocuments = DocumentsMockData.mockDocuments;
-    final filteredDocs = _selectedCategory == 'Todos'
+
+    // Filtrar por categoría
+    var filteredDocs = _selectedCategory == 'Todos'
         ? allDocuments
         : allDocuments
               .where((d) => d['primaryCategory'] == _selectedCategory)
               .toList();
+
+    // 🔒 CORRECCIÓN 3: Filtrar por búsqueda sanitizada
+    if (_searchQuery.isNotEmpty) {
+      filteredDocs = filteredDocs.where((doc) {
+        final title = (doc['title'] as String).toLowerCase();
+        final keywords = (doc['keywords'] as List).join(' ').toLowerCase();
+        final searchLower = _searchQuery.toLowerCase();
+
+        return title.contains(searchLower) || keywords.contains(searchLower);
+      }).toList();
+    }
 
     return MainScaffold(
       title: 'Explorar',
       currentNavIndex: 2,
       body: Column(
         children: [
-          // Search Bar
+          // 🔒 CORRECCIÓN 4: Search Bar con validación
           Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
+              controller: _searchController,
+              // 🔒 Limitar longitud máxima
+              maxLength: InputValidators.MAX_SEARCH_LENGTH,
+              buildCounter:
+                  (
+                    context, {
+                    required currentLength,
+                    required isFocused,
+                    maxLength,
+                  }) {
+                    // Mostrar contador solo cerca del límite
+                    if (currentLength >
+                        InputValidators.MAX_SEARCH_LENGTH - 20) {
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          '$currentLength / $maxLength',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: currentLength >= maxLength!
+                                ? AppTheme.errorColor
+                                : AppTheme.textSecondaryColor,
+                          ),
+                        ),
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  },
               decoration: InputDecoration(
                 hintText: 'Buscar documentos...',
                 prefixIcon: const Icon(Icons.search),
+                // 🔒 Botón para limpiar búsqueda
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
                 filled: true,
                 fillColor: Colors.white,
                 border: OutlineInputBorder(
@@ -49,9 +129,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
                   borderSide: BorderSide.none,
                 ),
               ),
-              onChanged: (value) {
-                // TODO: Implementar búsqueda
-              },
             ),
           ),
 
@@ -93,13 +170,70 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
           const SizedBox(height: 8),
 
+          // 🔒 CORRECCIÓN 5: Mostrar indicador de búsqueda activa
+          if (_searchQuery.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.search,
+                    size: 16,
+                    color: AppTheme.textSecondaryColor,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Buscando: "$_searchQuery"',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textSecondaryColor,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '${filteredDocs.length} resultados',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.primaryColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
           // Documents Grid
           Expanded(
             child: filteredDocs.isEmpty
                 ? Center(
-                    child: Text(
-                      'No hay documentos en esta categoría',
-                      style: TextStyle(color: AppTheme.textSecondaryColor),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.search_off,
+                          size: 64,
+                          color: AppTheme.textLightColor,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          _searchQuery.isNotEmpty
+                              ? 'No se encontraron documentos'
+                              : 'No hay documentos en esta categoría',
+                          style: TextStyle(color: AppTheme.textSecondaryColor),
+                        ),
+                        if (_searchQuery.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          TextButton.icon(
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _searchQuery = '');
+                            },
+                            icon: const Icon(Icons.clear),
+                            label: const Text('Limpiar búsqueda'),
+                          ),
+                        ],
+                      ],
                     ),
                   )
                 : GridView.builder(

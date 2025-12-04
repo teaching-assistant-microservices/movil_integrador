@@ -1,5 +1,8 @@
+// lib/core/router/app_router.dart
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:integrador/core/router/routes.dart';
+import 'package:integrador/features/auth/ui/providers/auth_provider.dart';
 
 // Auth Screens
 import 'package:integrador/features/auth/ui/screens/login_screen.dart';
@@ -30,29 +33,52 @@ import 'package:integrador/features/settings/ui/screens/preferences_screen.dart'
 import 'package:integrador/features/settings/ui/screens/help_screen.dart';
 
 class AppRouter {
+  final AuthProvider authProvider;
+
+  AppRouter(this.authProvider);
+
   late final GoRouter router = GoRouter(
-    initialLocation: AppRoutes.assistantPath,
+    initialLocation: AppRoutes.loginPath,
+    refreshListenable: authProvider, // Escucha cambios en autenticación
+    redirect: (BuildContext context, GoRouterState state) {
+      final isAuthenticated = authProvider.isAuthenticated;
+      final isAuthRoute =
+          state.matchedLocation == AppRoutes.loginPath ||
+          state.matchedLocation == AppRoutes.registerPath;
+
+      // Si no está autenticado y no está en ruta de auth, redirigir a login
+      if (!isAuthenticated && !isAuthRoute) {
+        return AppRoutes.loginPath;
+      }
+
+      // Si está autenticado y está en ruta de auth, redirigir a home
+      if (isAuthenticated && isAuthRoute) {
+        return AppRoutes.homePath;
+      }
+
+      // No redirigir
+      return null;
+    },
     routes: [
-      // ============ AUTH ROUTES ============
+      // ============ AUTH ROUTES (Públicas) ============
       GoRoute(
         path: AppRoutes.loginPath,
         name: AppRoutes.login,
         builder: (context, state) => const LoginScreen(),
       ),
-      
+
       GoRoute(
         path: AppRoutes.registerPath,
         name: AppRoutes.register,
         builder: (context, state) => const RegisterScreen(),
       ),
 
-      // ============ MAIN NAVIGATION ROUTES ============
+      // ============ MAIN NAVIGATION ROUTES (Protegidas) ============
       GoRoute(
         path: AppRoutes.homePath,
         name: AppRoutes.home,
         builder: (context, state) => const HomeScreen(),
         routes: [
-          // Upload Document (accessible from Home)
           GoRoute(
             path: 'upload',
             name: AppRoutes.uploadDocument,
@@ -104,7 +130,6 @@ class AppRouter {
           return GroupingDetailScreen(groupingId: groupingId);
         },
         routes: [
-          // Recommendations
           GoRoute(
             path: 'recommendations',
             name: AppRoutes.recommendations,
@@ -138,14 +163,11 @@ class AppRouter {
         name: AppRoutes.settings,
         builder: (context, state) => const SettingsScreen(),
         routes: [
-          // Preferences
           GoRoute(
             path: 'preferences',
             name: AppRoutes.preferences,
             builder: (context, state) => const PreferencesScreen(),
           ),
-          
-          // Help
           GoRoute(
             path: 'help',
             name: AppRoutes.help,

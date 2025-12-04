@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:integrador/core/router/app_router.dart';
+import 'package:integrador/features/auth/ui/providers/auth_provider.dart';
 import 'package:integrador/themes/app_theme.dart';
 
 void main() {
@@ -11,7 +12,7 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final appRouter = AppRouter();
+    final appRouter = AppRouter(context as AuthProvider);
 
     return MaterialApp.router(
       title: 'Asistente Pedagógico Inteligente',
@@ -26,4 +27,4 @@ class MyApp extends StatelessWidget {
       routerConfig: appRouter.router,
     );
   }
-}
+}      

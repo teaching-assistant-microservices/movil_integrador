@@ -1,19 +1,24 @@
 // lib/core/mocks/auth_mock_data.dart
+import 'package:integrador/features/auth/data/models/auth_response_dto.dart';
 
 class AuthMockData {
-  static final mockUser = {
-    'id': 'test_user_123',
-    'email': 'demo@asistente.com',
-    'name': 'Usuario Demo',
-  };
+  static final mockUser = UserDto(
+    id: 'test_user_123',
+    email: 'demo@asistente.com',
+    name: 'Usuario Demo',
+  );
 
-  static LoginResponseDto mockLogin(String email, String password) {
+  static AuthResponseDto mockLogin(String email, String password) {
     // Simular validación
     if (password.length < 6) {
       throw Exception('Password must be at least 6 characters');
     }
 
-    return LoginResponseDto(
+    if (email != 'demo@asistente.com' && email != 'admin@asistente.com') {
+      throw Exception('Usuario no encontrado');
+    }
+
+    return AuthResponseDto(
       accessToken: 'mock_jwt_token_${DateTime.now().millisecondsSinceEpoch}',
       refreshToken:
           'mock_refresh_token_${DateTime.now().millisecondsSinceEpoch}',
@@ -21,18 +26,30 @@ class AuthMockData {
       user: mockUser,
     );
   }
-}
 
-class LoginResponseDto {
-  final String accessToken;
-  final String refreshToken;
-  final int expiresIn;
-  final Map<String, dynamic> user;
+  static AuthResponseDto mockRegister(
+    String email,
+    String name,
+    String password,
+  ) {
+    if (password.length < 6) {
+      throw Exception('Password must be at least 6 characters');
+    }
 
-  LoginResponseDto({
-    required this.accessToken,
-    required this.refreshToken,
-    required this.expiresIn,
-    required this.user,
-  });
+    if (email == 'demo@asistente.com') {
+      throw Exception('Email already exists');
+    }
+
+    return AuthResponseDto(
+      accessToken: 'mock_jwt_token_${DateTime.now().millisecondsSinceEpoch}',
+      refreshToken:
+          'mock_refresh_token_${DateTime.now().millisecondsSinceEpoch}',
+      expiresIn: 3600,
+      user: UserDto(
+        id: 'user_${DateTime.now().millisecondsSinceEpoch}',
+        email: email,
+        name: name,
+      ),
+    );
+  }
 }
