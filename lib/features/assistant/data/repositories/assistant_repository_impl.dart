@@ -1,79 +1,71 @@
-import 'package:integrador/core/mocks/chat_mock_data.dart';
-import 'package:integrador/core/mocks/mock_service.dart';
-import 'package:integrador/features/assistant/data/datasources/assistant_api_service.dart';
-import 'package:integrador/features/assistant/data/models/chat_request_dto.dart';
-import 'package:integrador/features/assistant/domain/entities/conversation.dart';
+// lib/features/assistant/data/repositories/assistant_repository_impl.dart
+// ✅ CORREGIDO - Sin streaming, usa JSON responses
+
+import 'package:dartz/dartz.dart';
 import 'package:integrador/features/assistant/domain/entities/message.dart';
-import 'package:integrador/features/assistant/domain/entities/stream_event.dart';
-import 'package:integrador/features/assistant/domain/repositories/assistant_repository.dart';
+import '../../../../core/errors/failures.dart';
+import '../../../../core/errors/exceptions.dart';
+import '../../domain/repositories/assistant_repository.dart';
+import '../datasources/assistant_remote_datasource.dart';
 
 class AssistantRepositoryImpl implements AssistantRepository {
-  final AssistantApiService? _apiService;
-  final bool useMockData;
+  final AssistantRemoteDataSource remoteDataSource;
 
-  AssistantRepositoryImpl({
-    AssistantApiService? apiService,
-    this.useMockData = true, // ⚠️ TRUE por defecto mientras no hay backend
-  }) : _apiService = useMockData ? null : (apiService ?? AssistantApiService());
+  AssistantRepositoryImpl({required this.remoteDataSource});
 
   @override
-  Stream<StreamEvent> sendMessage({
-    required String userId,
+  Future<Either<Failure, String>> createSession(String userId) async {
+    try {
+      final sessionId = await remoteDataSource.createSession(userId);
+      return Right(sessionId);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, MessageEntity>> sendMessage({
+    required String sessionId,
     required String query,
-    String? conversationId,
-  }) {
-    if (useMockData) {
-      return ChatMockData.mockStreamResponse(query);
-    }
-
-    final request = ChatRequestDto(
-      userId: userId,
-      query: query,
-      conversationId: conversationId,
-    );
-    return _apiService!.sendMessageStream(request);
-  }
-
-  @override
-  Future<List<Conversation>> getConversationHistory({
-    required String userId,
-    int limit = 20,
-    int offset = 0,
+    bool enableWebSearch = false,
   }) async {
-    if (useMockData) {
-      return await MockService.simulateApiCall(
-        dataGenerator: () => ChatMockData.mockConversationHistory(),
+    try {
+      final message = await remoteDataSource.sendMessage(
+        sessionId: sessionId,
+        query: query,
+        enableWebSearch: enableWebSearch,
       );
+      return Right(message);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
     }
-
-    final dto = await _apiService!.getConversationHistory(
-      userId,
-      limit: limit,
-      offset: offset,
-    );
-    return dto.conversations.map((c) => c.toEntity()).toList();
   }
 
   @override
-  Future<List<Message>> getConversationMessages(String conversationId) async {
-    if (useMockData) {
-      return await MockService.simulateApiCall(
-        dataGenerator: () =>
-            ChatMockData.mockConversationMessages(conversationId),
-      );
+  Future<Either<Failure, List<MessageEntity>>> getHistory(
+    String sessionId,
+  ) async {
+    try {
+      final result = await remoteDataSource.getHistory(sessionId);
+      return Right(result);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
     }
-
-    final dto = await _apiService!.getConversationMessages(conversationId);
-    return dto.messages.map((m) => m.toEntity()).toList();
   }
 
   @override
-  Future<void> deleteConversation(String conversationId) async {
-    if (useMockData) {
-      await MockService.simulateApiCall(dataGenerator: () => null);
-      return;
+  Future<Either<Failure, void>> deleteSession(String sessionId) async {
+    try {
+      await remoteDataSource.deleteSession(sessionId);
+      return const Right(null);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
     }
-
-    await _apiService!.deleteConversation(conversationId);
   }
 }

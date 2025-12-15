@@ -1,168 +1,226 @@
 // lib/features/assistant/ui/providers/assistant_provider.dart
-// VERSIÓN CORREGIDA - Implementa sanitización de mensajes (CRÍTICO)
+// ✅ CORREGIDO - Sin streaming, manejo de sesiones
 
-import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:integrador/core/utils/validators.dart'; // ⬅️ NUEVO IMPORT CRÍTICO
-import 'package:integrador/features/assistant/data/repositories/assistant_repository_impl.dart';
-import 'package:integrador/features/assistant/domain/entities/stream_event.dart';
-import 'package:integrador/features/assistant/domain/models/chat_message.dart';
-import 'package:integrador/features/assistant/domain/repositories/assistant_repository.dart';
+import 'package:integrador/features/assistant/domain/entities/message.dart';
+import '../../domain/usecases/assistant_usecases.dart';
+import '../../../../core/utils/logger.dart';
+
+enum AssistantStatus { initial, loading, success, error }
 
 class AssistantProvider extends ChangeNotifier {
-  final AssistantRepository _repository = AssistantRepositoryImpl();
+  final CreateSessionUseCase createSessionUseCase;
+  final SendMessageUseCase sendMessageUseCase;
+  final GetHistoryUseCase getHistoryUseCase;
+  final DeleteSessionUseCase deleteSessionUseCase;
 
-  // Estado
-  final List<ChatMessage> _messages = [];
-  bool _isTyping = false;
-  String? _currentConversationId;
-  StreamSubscription? _streamSubscription;
+  AssistantProvider({
+    required this.createSessionUseCase,
+    required this.sendMessageUseCase,
+    required this.getHistoryUseCase,
+    required this.deleteSessionUseCase,
+  });
 
-  // Getters para el estado
-  List<ChatMessage> get messages => _messages;
-  bool get isTyping => _isTyping;
-  String? get currentConversationId => _currentConversationId;
+  // ========================================
+  // STATE
+  // ========================================
 
-  // Usuario de prueba según la documentación
-  static const String _userId = 'test_user_123';
+  List<MessageEntity> _messages = [];
+  List<MessageEntity> get messages => List.unmodifiable(_messages);
 
-  // 🔒 CORRECCIÓN CRÍTICA: Sanitizar mensaje antes de enviar
-  Future<void> sendMessage(String text) async {
-    // Validar que no esté vacío
-    if (text.trim().isEmpty) return;
+  AssistantStatus _status = AssistantStatus.initial;
+  AssistantStatus get status => _status;
 
-    // 🔒 SANITIZACIÓN CRÍTICA: Prevenir Prompt Injection
-    final sanitized = InputValidators.sanitizeChatMessage(text);
+  String? _errorMessage;
+  String? get errorMessage => _errorMessage;
 
-    // 🔒 VALIDACIÓN ADICIONAL: Verificar longitud después de sanitizar
-    final validationError = InputValidators.validateChatMessage(sanitized);
-    if (validationError != null) {
-      // Mostrar error al usuario
-      _messages.add(
-        ChatMessage.assistant(message: '⚠️ Error: $validationError'),
-      );
-      notifyListeners();
-      return;
+  String? _currentSessionId;
+  String? get currentSessionId => _currentSessionId;
+
+  bool get isLoading => _status == AssistantStatus.loading;
+  bool get hasSession => _currentSessionId != null;
+
+  // ========================================
+  // INITIALIZE
+  // ========================================
+
+  Future<void> initialize({required String userId}) async {
+    AppLogger.info('Inicializando AssistantProvider', tag: 'AssistantProvider');
+
+    // Crear sesión automáticamente
+    await _createSession(userId);
+  }
+
+  // ========================================
+  // CREATE SESSION (PRIVADO)
+  // ========================================
+
+  Future<void> _createSession(String userId) async {
+    _setStatus(AssistantStatus.loading);
+
+    final result = await createSessionUseCase(
+      CreateSessionParams(userId: userId),
+    );
+
+    result.fold(
+      (failure) {
+        _errorMessage = failure.message;
+        _setStatus(AssistantStatus.error);
+        AppLogger.error(
+          'Error al crear sesión',
+          tag: 'AssistantProvider',
+          error: failure,
+        );
+      },
+      (sessionId) {
+        _currentSessionId = sessionId;
+        _setStatus(AssistantStatus.success);
+        AppLogger.success(
+          'Sesión creada: $sessionId',
+          tag: 'AssistantProvider',
+        );
+
+        // Cargar historial si existe
+        _loadHistory();
+      },
+    );
+  }
+
+  // ========================================
+  // LOAD HISTORY
+  // ========================================
+
+  Future<void> _loadHistory() async {
+    if (_currentSessionId == null) return;
+
+    final result = await getHistoryUseCase(
+      GetHistoryParams(sessionId: _currentSessionId!),
+    );
+
+    result.fold(
+      (failure) {
+        AppLogger.warning(
+          'No se pudo cargar historial: ${failure.message}',
+          tag: 'AssistantProvider',
+        );
+      },
+      (history) {
+        _messages = history;
+        notifyListeners();
+        AppLogger.success(
+          'Historial cargado: ${history.length} mensajes',
+          tag: 'AssistantProvider',
+        );
+      },
+    );
+  }
+
+  // ========================================
+  // SEND MESSAGE
+  // ========================================
+
+  Future<void> sendMessage({
+    required String query,
+    bool enableWebSearch = false,
+  }) async {
+    if (query.trim().isEmpty) return;
+
+    // Si no hay sesión, crear una con un userId dummy
+    if (_currentSessionId == null) {
+      await _createSession('user_${DateTime.now().millisecondsSinceEpoch}');
+      if (_currentSessionId == null) {
+        _errorMessage = 'No se pudo crear sesión de chat';
+        _setStatus(AssistantStatus.error);
+        return;
+      }
     }
 
-    // Agregar mensaje del usuario (con texto sanitizado)
-    final userMessage = ChatMessage.user(message: sanitized);
-    _messages.add(userMessage);
-    _isTyping = true;
-    notifyListeners();
+    // 1. Agregar mensaje del usuario
+    final userMsg = MessageEntity(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      role: MessageRole.user,
+      content: query,
+      sources: const [],
+      timestamp: DateTime.now(),
+    );
+    _messages.add(userMsg);
+    _setStatus(AssistantStatus.loading);
 
-    // Enviar mensaje sanitizado a la API
-    await _sendMessageToApi(sanitized);
-  }
+    AppLogger.info(
+      'Enviando mensaje: ${query.substring(0, query.length > 50 ? 50 : query.length)}...',
+      tag: 'AssistantProvider',
+    );
 
-  Future<void> _sendMessageToApi(String query) async {
-    // Buffer para acumular los tokens del streaming
-    final responseBuffer = StringBuffer();
-    String? documentReference;
+    // 2. Enviar al backend
+    final result = await sendMessageUseCase(
+      SendMessageParams(
+        sessionId: _currentSessionId!,
+        query: query,
+        enableWebSearch: enableWebSearch,
+      ),
+    );
 
-    _streamSubscription?.cancel();
-
-    _streamSubscription = _repository
-        .sendMessage(
-          userId: _userId,
-          query: query, // Ya viene sanitizado
-          conversationId: _currentConversationId,
-        )
-        .listen(
-          (event) {
-            switch (event.type) {
-              case StreamEventType.token:
-                // Acumular tokens
-                final token = event.data as StreamToken;
-                responseBuffer.write(token.token);
-
-                // Actualizar el último mensaje del asistente o crear uno nuevo
-                if (_messages.isNotEmpty && !_messages.last.isUser) {
-                  // Actualizar el mensaje existente
-                  _messages.last = ChatMessage.assistant(
-                    message: responseBuffer.toString(),
-                    documentReference: documentReference,
-                  );
-                } else {
-                  // Crear nuevo mensaje del asistente
-                  _messages.add(
-                    ChatMessage.assistant(
-                      message: responseBuffer.toString(),
-                      documentReference: documentReference,
-                    ),
-                  );
-                }
-                notifyListeners();
-                break;
-
-              case StreamEventType.sources:
-                final sources = event.data as StreamSources;
-
-                // Guardar el ID de la conversación para futuras consultas
-                if (sources.conversationId != null) {
-                  _currentConversationId = sources.conversationId;
-                }
-
-                // Formatear referencias documentales
-                if (sources.sources.isNotEmpty) {
-                  final firstSource = sources.sources.first;
-                  documentReference = firstSource.pageNumber != null
-                      ? '${firstSource.filename}, pág. ${firstSource.pageNumber}'
-                      : firstSource.filename;
-
-                  // Actualizar el mensaje con las fuentes
-                  if (_messages.isNotEmpty && !_messages.last.isUser) {
-                    _messages.last = ChatMessage.assistant(
-                      message: responseBuffer.toString(),
-                      documentReference: documentReference,
-                    );
-                  }
-                  notifyListeners();
-                }
-                break;
-
-              case StreamEventType.done:
-                _isTyping = false;
-                notifyListeners();
-                break;
-
-              case StreamEventType.error:
-                _isTyping = false;
-                _messages.add(
-                  ChatMessage.assistant(message: 'Error: ${event.data}'),
-                );
-                notifyListeners();
-                break;
-            }
-          },
-          onError: (error) {
-            _isTyping = false;
-            _messages.add(
-              ChatMessage.assistant(
-                message:
-                    'Error de conexión: $error\n\nVerifica que el servidor esté ejecutándose en http://localhost:8000',
-              ),
-            );
-            notifyListeners();
-          },
+    result.fold(
+      (failure) {
+        _errorMessage = failure.message;
+        _setStatus(AssistantStatus.error);
+        AppLogger.error(
+          'Error al enviar mensaje',
+          tag: 'AssistantProvider',
+          error: failure,
         );
+      },
+      (assistantMessage) {
+        _messages.add(assistantMessage);
+        _setStatus(AssistantStatus.success);
+        AppLogger.success('Respuesta recibida', tag: 'AssistantProvider');
+      },
+    );
   }
 
-  // Limpiar conversación
-  void clearChat() {
+  // ========================================
+  // CLEAR HISTORY (ELIMINAR SESIÓN)
+  // ========================================
+
+  Future<void> clearHistory({required String userId}) async {
+    if (_currentSessionId == null) return;
+
+    final result = await deleteSessionUseCase(
+      DeleteSessionParams(sessionId: _currentSessionId!),
+    );
+
+    result.fold(
+      (failure) {
+        AppLogger.warning(
+          'Error al eliminar sesión: ${failure.message}',
+          tag: 'AssistantProvider',
+        );
+      },
+      (_) {
+        AppLogger.success('Sesión eliminada', tag: 'AssistantProvider');
+      },
+    );
+
+    // Limpiar estado local
     _messages.clear();
-    _currentConversationId = null;
+    _currentSessionId = null;
+    _setStatus(AssistantStatus.initial);
+
+    // Crear nueva sesión
+    await _createSession(userId);
+  }
+
+  // ========================================
+  // HELPERS
+  // ========================================
+
+  void _setStatus(AssistantStatus newStatus) {
+    _status = newStatus;
     notifyListeners();
   }
 
-  // 🔒 NUEVA FUNCIÓN: Validar mensaje antes de enviar (para UI)
-  String? validateMessage(String message) {
-    return InputValidators.validateChatMessage(message);
-  }
-
-  @override
-  void dispose() {
-    _streamSubscription?.cancel();
-    super.dispose();
+  void clearError() {
+    _errorMessage = null;
+    notifyListeners();
   }
 }

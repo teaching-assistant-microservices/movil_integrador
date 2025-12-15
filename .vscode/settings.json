@@ -1,3 +1,5 @@
 {
-  "cmake.sourceDirectory": "/mnt/storage/jh532004/Proyects/01_Active/flutter/movil_integrador/linux"
+  "cmake.sourceDirectory": "/mnt/storage/jh532004/Proyects/01_Active/flutter/movil_integrador/linux",
+  "java.configuration.updateBuildConfiguration": "interactive",
+  "cSpell.words": ["allprojects"]
 }

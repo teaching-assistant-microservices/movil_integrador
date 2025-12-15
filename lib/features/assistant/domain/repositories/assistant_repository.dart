@@ -1,26 +1,24 @@
-import 'package:integrador/features/assistant/domain/entities/conversation.dart';
+// lib/features/assistant/domain/repositories/assistant_repository.dart
+// ✅ CORREGIDO - Sin streaming, manejo de sesiones
+
+import 'package:dartz/dartz.dart';
 import 'package:integrador/features/assistant/domain/entities/message.dart';
-import 'package:integrador/features/assistant/domain/entities/stream_event.dart';
+import '../../../../core/errors/failures.dart';
 
-/// Contrato del repositorio del asistente
 abstract class AssistantRepository {
-  /// Envía un mensaje y recibe respuesta en streaming
-  Stream<StreamEvent> sendMessage({
-    required String userId,
+  /// Crear una sesión de chat para el usuario
+  Future<Either<Failure, String>> createSession(String userId);
+
+  /// Enviar un mensaje y recibir respuesta (sin streaming)
+  Future<Either<Failure, MessageEntity>> sendMessage({
+    required String sessionId,
     required String query,
-    String? conversationId,
+    bool enableWebSearch = false,
   });
 
-  /// Obtiene el historial de conversaciones del usuario
-  Future<List<Conversation>> getConversationHistory({
-    required String userId,
-    int limit = 20,
-    int offset = 0,
-  });
+  /// Obtener el historial completo de una sesión
+  Future<Either<Failure, List<MessageEntity>>> getHistory(String sessionId);
 
-  /// Obtiene los mensajes de una conversación específica
-  Future<List<Message>> getConversationMessages(String conversationId);
-
-  /// Elimina una conversación
-  Future<void> deleteConversation(String conversationId);
+  /// Eliminar una sesión
+  Future<Either<Failure, void>> deleteSession(String sessionId);
 }

@@ -23,6 +23,12 @@ class AppTheme {
   static const Color textSecondaryColor = Color(0xFF7F8C8D);
   static const Color textLightColor = Color(0xFFBDC3C7);
 
+  // ⬅️ NUEVOS COLORES AGREGADOS
+  static const Color dividerColor = Color(0xFFE0E0E0); // Divisores
+  static const Color disabledColor = Color(
+    0xFFBDBDBD,
+  ); // Elementos deshabilitados
+
   // Colores de acento
   static const Color accentTeal = Color(0xFF1ABC9C);
   static const Color accentPurple = Color(0xFF9B59B6);
@@ -62,9 +68,7 @@ class AppTheme {
       color: surfaceColor,
       elevation: 2,
       shadowColor: Colors.black12,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     ),
 
     floatingActionButtonTheme: const FloatingActionButtonThemeData(
@@ -79,13 +83,8 @@ class AppTheme {
         foregroundColor: Colors.white,
         elevation: 2,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        textStyle: const TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
       ),
     ),
 
@@ -94,9 +93,7 @@ class AppTheme {
         foregroundColor: primaryColor,
         side: const BorderSide(color: primaryColor, width: 1.5),
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     ),
 
@@ -149,14 +146,9 @@ class AppTheme {
     chipTheme: ChipThemeData(
       backgroundColor: backgroundColor,
       selectedColor: primaryColor.withValues(alpha: 0.2),
-      labelStyle: const TextStyle(
-        color: textPrimaryColor,
-        fontSize: 14,
-      ),
+      labelStyle: const TextStyle(color: textPrimaryColor, fontSize: 14),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
     ),
 
     dividerTheme: DividerThemeData(
@@ -165,10 +157,7 @@ class AppTheme {
       space: 1,
     ),
 
-    iconTheme: const IconThemeData(
-      color: textSecondaryColor,
-      size: 24,
-    ),
+    iconTheme: const IconThemeData(color: textSecondaryColor, size: 24),
 
     textTheme: const TextTheme(
       displayLarge: TextStyle(
@@ -264,9 +253,7 @@ class AppTheme {
       color: const Color(0xFF1E1E1E),
       elevation: 2,
       shadowColor: Colors.black45,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     ),
 
     bottomNavigationBarTheme: BottomNavigationBarThemeData(

@@ -1,48 +1,39 @@
-class Message {
-  final String messageId;
-  final String role; // 'user' o 'assistant'
-  final String content;
-  final DateTime timestamp;
-  final List<DocumentSource>? sources;
+import 'package:equatable/equatable.dart';
 
-  Message({
-    required this.messageId,
+enum MessageRole { user, assistant, system }
+
+class MessageEntity extends Equatable {
+  final String id;
+  final MessageRole role;
+  final String content;
+  final List<MessageSourceEntity> sources;
+  final DateTime timestamp;
+
+  const MessageEntity({
+    required this.id,
     required this.role,
     required this.content,
+    required this.sources,
     required this.timestamp,
-    this.sources,
   });
 
-  bool get isUser => role == 'user';
-  bool get isAssistant => role == 'assistant';
+  bool get isUser => role == MessageRole.user;
 
-  Message copyWith({
-    String? messageId,
-    String? role,
-    String? content,
-    DateTime? timestamp,
-    List<DocumentSource>? sources,
-  }) {
-    return Message(
-      messageId: messageId ?? this.messageId,
-      role: role ?? this.role,
-      content: content ?? this.content,
-      timestamp: timestamp ?? this.timestamp,
-      sources: sources ?? this.sources,
-    );
-  }
+  @override
+  List<Object?> get props => [id, role, content, sources, timestamp];
 }
 
-class DocumentSource {
-  final String documentId;
-  final String filename;
-  final int? pageNumber;
-  final double? relevanceScore;
+class MessageSourceEntity extends Equatable {
+  final String title;
+  final String url; // Agregado para robustez futura
+  final double relevanceScore;
 
-  DocumentSource({
-    required this.documentId,
-    required this.filename,
-    this.pageNumber,
-    this.relevanceScore,
+  const MessageSourceEntity({
+    required this.title,
+    this.url = '',
+    required this.relevanceScore,
   });
+
+  @override
+  List<Object?> get props => [title, url, relevanceScore];
 }

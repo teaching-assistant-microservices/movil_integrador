@@ -1,128 +1,191 @@
-// lib/features/auth/ui/providers/auth_provider.dart
+// lib/features/auth/presentation/providers/auth_provider.dart
 import 'package:flutter/foundation.dart';
-import 'package:integrador/core/config/app_config.dart';
-import 'package:integrador/features/auth/data/datasources/token_storage.dart';
-import 'package:integrador/features/auth/data/models/auth_response_dto.dart';
-import 'package:integrador/features/auth/data/repositories/auth_repository_impl.dart';
+import 'package:integrador/core/usecases/usecase.dart';
+import 'package:integrador/features/auth/domain/usecases/login_usecase.dart';
+import '../../domain/entities/user.dart';
 
+/// Estados posibles de la autenticación
+enum AuthStatus { initial, loading, authenticated, unauthenticated, error }
+
+/// ViewModel de Autenticación usando Provider (MVVM)
+///
+/// Responsabilidades:
+/// - Gestionar estado de UI
+/// - Coordinar use cases
+/// - Exponer datos de forma reactiva
+/// - NO contiene lógica de negocio (eso está en UseCases)
 class AuthProvider extends ChangeNotifier {
-  final AuthRepositoryImpl _repository = AuthRepositoryImpl();
+  // Dependencies (Use Cases)
+  final LoginUseCase loginUseCase;
+  final RegisterUseCase registerUseCase;
+  final LogoutUseCase logoutUseCase;
+  final ValidateTokenUseCase validateTokenUseCase;
+  final GetCachedUserUseCase getCachedUserUseCase;
 
-  // Estado
-  bool _isAuthenticated = false;
-  bool _isLoading = false;
+  AuthProvider({
+    required this.loginUseCase,
+    required this.registerUseCase,
+    required this.logoutUseCase,
+    required this.validateTokenUseCase,
+    required this.getCachedUserUseCase,
+  });
+
+  // ========================================
+  // STATE
+  // ========================================
+
+  AuthStatus _status = AuthStatus.initial;
+  AuthStatus get status => _status;
+
+  User? _user;
+  User? get user => _user;
+
   String? _errorMessage;
-  UserDto? _currentUser;
-
-  // Getters
-  bool get isAuthenticated => _isAuthenticated;
-  bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
-  UserDto? get currentUser => _currentUser;
-  String get userId => _currentUser?.id ?? 'unknown';
 
-  /// Inicializar: Verificar si hay sesión activa
+  bool get isAuthenticated => _status == AuthStatus.authenticated;
+  bool get isLoading => _status == AuthStatus.loading;
+  bool get hasError => _status == AuthStatus.error;
+
+  // ========================================
+  // INITIALIZE
+  // ========================================
+
+  /// Inicializar - verifica sesión persistente
   Future<void> initialize() async {
-    _isLoading = true;
-    notifyListeners();
+    _setStatus(AuthStatus.loading);
 
-    try {
-      _isAuthenticated = await _repository.isAuthenticated();
+    // 1. Intentar obtener usuario del cache
+    final cachedResult = await getCachedUserUseCase(NoParams());
 
-      if (_isAuthenticated) {
-        final userData = await TokenStorage.getUserData();
-        if (userData != null) {
-          _currentUser = UserDto.fromJson(userData);
+    await cachedResult.fold(
+      (failure) async {
+        // No hay usuario en cache
+        _setStatus(AuthStatus.unauthenticated);
+      },
+      (cachedUser) async {
+        if (cachedUser != null) {
+          // 2. Validar token con el servidor
+          final validateResult = await validateTokenUseCase(NoParams());
+
+          validateResult.fold(
+            (failure) {
+              // Token inválido
+              _user = null;
+              _setStatus(AuthStatus.unauthenticated);
+            },
+            (validUser) {
+              // Token válido
+              _user = validUser;
+              _setStatus(AuthStatus.authenticated);
+            },
+          );
+        } else {
+          _setStatus(AuthStatus.unauthenticated);
         }
-      }
-    } catch (e) {
-      _isAuthenticated = false;
-      _errorMessage = 'Error al inicializar sesión: $e';
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
+      },
+    );
   }
 
-  /// Login
-  Future<bool> login(String email, String password) async {
-    _isLoading = true;
+  // ========================================
+  // LOGIN
+  // ========================================
+
+  Future<bool> login({required String email, required String password}) async {
+    _setStatus(AuthStatus.loading);
     _errorMessage = null;
-    notifyListeners();
 
-    try {
-      final response = await _repository.login(email, password) as AuthResponseDto;
+    final result = await loginUseCase(
+      LoginParams(email: email, password: password),
+    );
 
-      _isAuthenticated = true;
-      _currentUser = response.user;
-      _errorMessage = null;
-
-      return true;
-    } catch (e) {
-      _isAuthenticated = false;
-      _errorMessage = e.toString().replaceAll('Exception: ', '');
-      return false;
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
+    return result.fold(
+      (failure) {
+        _errorMessage = failure.message;
+        _setStatus(AuthStatus.error);
+        return false;
+      },
+      (authResponse) {
+        _user = authResponse.user;
+        _setStatus(AuthStatus.authenticated);
+        return true;
+      },
+    );
   }
 
-  /// Register
+  // ========================================
+  // REGISTER
+  // ========================================
+
   Future<bool> register({
-    required String email,
     required String name,
+    required String email,
     required String password,
-    String? academicLevel,
+    required String academicLevel,
   }) async {
-    _isLoading = true;
+    _setStatus(AuthStatus.loading);
     _errorMessage = null;
-    notifyListeners();
 
-    try {
-      final response = await _repository.register(
-        email: email,
+    final result = await registerUseCase(
+      RegisterParams(
         name: name,
+        email: email,
         password: password,
         academicLevel: academicLevel,
-      );
+      ),
+    );
 
-      _isAuthenticated = true;
-      _currentUser = response.user;
-      _errorMessage = null;
-
-      return true;
-    } catch (e) {
-      _isAuthenticated = false;
-      _errorMessage = e.toString().replaceAll('Exception: ', '');
-      return false;
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
+    return result.fold(
+      (failure) {
+        _errorMessage = failure.message;
+        _setStatus(AuthStatus.error);
+        return false;
+      },
+      (authResponse) {
+        _user = authResponse.user;
+        _setStatus(AuthStatus.authenticated);
+        return true;
+      },
+    );
   }
 
-  /// Logout
+  // ========================================
+  // LOGOUT
+  // ========================================
+
   Future<void> logout() async {
-    _isLoading = true;
-    notifyListeners();
+    _setStatus(AuthStatus.loading);
 
-    try {
-      await _repository.logout();
-    } catch (e) {
-      AppConfig.debugLog('Error en logout: $e');
-    } finally {
-      _isAuthenticated = false;
-      _currentUser = null;
-      _errorMessage = null;
-      _isLoading = false;
-      notifyListeners();
-    }
+    final result = await logoutUseCase(NoParams());
+
+    result.fold(
+      (failure) {
+        // Incluso si falla, limpiamos el estado local
+        _user = null;
+        _setStatus(AuthStatus.unauthenticated);
+      },
+      (_) {
+        _user = null;
+        _setStatus(AuthStatus.unauthenticated);
+      },
+    );
   }
 
-  /// Clear error message
+  // ========================================
+  // HELPERS
+  // ========================================
+
+  void _setStatus(AuthStatus newStatus) {
+    _status = newStatus;
+    notifyListeners();
+  }
+
   void clearError() {
     _errorMessage = null;
-    notifyListeners();
+    if (_status == AuthStatus.error) {
+      _setStatus(
+        _user != null ? AuthStatus.authenticated : AuthStatus.unauthenticated,
+      );
+    }
   }
 }
